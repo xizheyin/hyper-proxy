@@ -61,6 +61,8 @@ use http::header::{HeaderMap, HeaderName, HeaderValue};
 use hyper::{service::Service, Uri};
 
 use futures_util::future::TryFutureExt;
+#[cfg(feature = "rustls-base")]
+use std::convert::TryFrom;
 use std::{fmt, io, sync::Arc};
 use std::{
     future::Future,
@@ -85,7 +87,7 @@ use openssl::ssl::{SslConnector as OpenSslConnector, SslMethod};
 #[cfg(feature = "openssl-tls")]
 use tokio_openssl::SslStream;
 #[cfg(feature = "rustls-base")]
-use webpki::DNSNameRef;
+use tokio_rustls::rustls::ServerName;
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
@@ -288,20 +290,36 @@ impl<C> ProxyConnector<C> {
     /// Create a new secured Proxies
     #[cfg(feature = "rustls-base")]
     pub fn new(connector: C) -> Result<Self, io::Error> {
-        let mut config = tokio_rustls::rustls::ClientConfig::new();
+        let config = tokio_rustls::rustls::ClientConfig::builder().with_safe_defaults();
 
         #[cfg(feature = "rustls")]
-        {
-            config.root_store =
-                rustls_native_certs::load_native_certs().map_err(|(_store, io)| io)?;
-        }
+        let config = {
+            {
+                let mut roots = tokio_rustls::rustls::RootCertStore::empty();
+                for cert in rustls_native_certs::load_native_certs()? {
+                    let cert = tokio_rustls::rustls::Certificate(cert.0);
+                    roots.add(&cert).map_err(io_err)?;
+                }
+                config.with_root_certificates(roots).with_no_client_auth()
+            }
+        };
 
         #[cfg(feature = "rustls-webpki")]
-        {
-            config
-                .root_store
-                .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
-        }
+        let config = {
+            {
+                let mut roots = tokio_rustls::rustls::RootCertStore::empty();
+                roots.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.into_iter().map(
+                    |trust_anchor| {
+                        tokio_rustls::rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+                            trust_anchor.subject,
+                            trust_anchor.spki,
+                            trust_anchor.name_constraints,
+                        )
+                    },
+                ));
+                config.with_root_certificates(roots).with_no_client_auth()
+            }
+        };
 
         let cfg = Arc::new(config);
         let tls = TlsConnector::from(cfg);
@@ -442,7 +460,13 @@ where
         if let (Some(p), Some(host)) = (self.match_proxy(&uri), uri.host()) {
             if uri.scheme() == Some(&http::uri::Scheme::HTTPS) || p.force_connect {
                 let host = host.to_owned();
-                let port = uri.port_u16().unwrap_or(if uri.scheme() == Some(&http::uri::Scheme::HTTP) { 80 } else { 443 });
+                let port =
+                    uri.port_u16()
+                        .unwrap_or(if uri.scheme() == Some(&http::uri::Scheme::HTTP) {
+                            80
+                        } else {
+                            443
+                        });
                 let tunnel = tunnel::new(&host, port, &p.headers);
                 let connection =
                     proxy_dst(&uri, &p.uri).map(|proxy_url| self.connector.call(proxy_url));
@@ -471,7 +495,7 @@ where
                             #[cfg(feature = "rustls-base")]
                             Some(tls) => {
                                 let dnsref =
-                                    mtry!(DNSNameRef::try_from_ascii_str(&host).map_err(io_err));
+                                    mtry!(ServerName::try_from(host.as_str()).map_err(io_err));
                                 let tls = TlsConnector::from(tls);
                                 let secure_stream =
                                     mtry!(tls.connect(dnsref, tunnel_stream).await.map_err(io_err));

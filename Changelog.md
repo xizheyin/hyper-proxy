@@ -8,6 +8,9 @@
   - test: Adding missing tests
   - chore: Changes to the build process or auxiliary tools/libraries/documentation
 
+## 0.10.0
+- feat: upgrade tokio-rustls and hyper-rustls to 0.23
+
 ## 0.9.0
 - feat: upgrade to tokio 1.0
 - feat: add tokio-openssl support
