@@ -26,12 +26,12 @@ tokio-native-tls = { version = "0.3.0", optional = true }
 native-tls = { version = "0.2", optional = true }
 openssl = { version = "0.10", optional = true }
 tokio-openssl = { version = "0.6", optional = true }
-tokio-rustls = { version = "0.22", optional = true }
-hyper-rustls = { version = "0.22", optional = true }
+tokio-rustls = { version = "0.24", optional = true }
+hyper-rustls = { version = "0.24", optional = true }
 
-webpki = { version = "0.21", optional = true }
-rustls-native-certs = { version = "0.5.0", optional = true }
-webpki-roots = { version = "0.21.0", optional = true }
+webpki = { version = "0.22", optional = true }
+rustls-native-certs = { version = "0.6.1", optional = true }
+webpki-roots = { version = "0.22.0", optional = true }
 headers = "0.3"
 
 [dev-dependencies]
@@ -46,4 +46,4 @@ tls = ["tokio-native-tls", "hyper-tls", "native-tls"]
 rustls-base = ["tokio-rustls", "hyper-rustls", "webpki"]
 rustls = ["rustls-base", "rustls-native-certs", "hyper-rustls/native-tokio"]
 rustls-webpki = ["rustls-base", "webpki-roots", "hyper-rustls/webpki-tokio"]
-default = ["tls"]
+default = ["rustls"]
